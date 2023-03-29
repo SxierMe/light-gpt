@@ -82,6 +82,7 @@ const IndexHeader: React.FC<{
                     Based on OpenAI API(gpt-3.5-turbo)
                 </div>
             </div>
+            <!--
             <div className={styles.sideMenus}>
                 <i
                     className="fab fa-github"
@@ -93,6 +94,7 @@ const IndexHeader: React.FC<{
                     }}
                 ></i>
             </div>
+            -->
         </div>
     );
 };
