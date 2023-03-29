@@ -668,7 +668,7 @@ export default function Home() {
                             </div>
                             <div className={styles.desc}>
                                 {t('apiKeyRequiredTip2')}
-                                <Link href="https://faka.ccchostvps.xyz" target="_blank">
+                                <Link href="https://yyzs.shop" target="_blank">
                                     Open Ai Platform
                                 </Link>
                             </div>
