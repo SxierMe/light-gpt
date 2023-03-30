@@ -75,7 +75,7 @@ const IndexHeader: React.FC<{
 
             <div className={styles.siteIntroduction}>
                 <div className={styles.title}>
-                    <span className={styles.item}>Light</span>
+                    <span className={styles.item}>薯条</span>
                     <span className={styles.item}>GPT</span>
                 </div>
                 <div className={styles.description}>
