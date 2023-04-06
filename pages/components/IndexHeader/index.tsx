@@ -14,7 +14,6 @@ const IndexHeader: React.FC<{
     apiKey: string;
     theme: Theme;
     updateTheme: (theme: Theme) => void;
-    toggleSystemMenuVisible: () => void;
 }> = ({ apiKey }) => {
     // const { t } = useTranslation();
 
@@ -79,9 +78,7 @@ const IndexHeader: React.FC<{
                     <span className={styles.item}>薯条</span>
                     <span className={styles.item}>GPT</span>
                 </div>
-                <div className={styles.description}>
-                    Based on OpenAI API(gpt-3.5-turbo)
-                </div>
+                <div className={styles.description}>Based on gpt-3.5-turbo</div>
             </div>
             <div className={styles.sideMenus}>
                 <i

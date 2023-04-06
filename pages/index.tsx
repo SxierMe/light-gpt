@@ -15,8 +15,6 @@ import html2canvas from 'html2canvas';
 
 import html2pdf from 'html2pdf-jspdf2';
 
-import CryptoJS from 'crypto-js';
-
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
 import styles from '@/styles/Home.module.scss';
@@ -49,6 +47,8 @@ import {
     SystemRoleLocalKey,
     APIKeyLocalKey,
     GenerateImagePromptPrefix,
+    encryptApiKey,
+    decryptApiKey,
 } from '../utils';
 
 const chatDB = new ChatService();
@@ -93,11 +93,6 @@ export default function Home() {
     }, []);
 
     const [tempSystemRoleValue, setTempSystemRoleValue] = useState('');
-
-    const [systemMenuVisible, setSystemMenuVisible] = useState(false);
-    const toggleSystemMenuVisible = useCallback(() => {
-        setSystemMenuVisible((visible) => !visible);
-    }, []);
 
     const [activeSystemMenu, setActiveSystemMenu] = useState<
         SystemSettingMenu | ''
@@ -217,9 +212,11 @@ export default function Home() {
     }, []);
 
     const [currentUserMessage, setCurrentUserMessage] = useState('');
+    const tempCurrentUserMessageId = useRef(uuid());
     const userPromptRef = useRef<HTMLTextAreaElement | null>(null);
 
     const [currentAssistantMessage, setCurrentAssistantMessage] = useState('');
+    const tempCurrentAssistantMessageId = useRef(uuid());
 
     const [loading, setLoading] = useState(false);
 
@@ -267,12 +264,12 @@ export default function Home() {
             toast.error('Please set API KEY', {
                 autoClose: 1000,
             });
-            setSystemMenuVisible(true);
             setActiveSystemMenu(SystemSettingMenu.apiKeySettings);
             return;
         }
 
         // 先把用户输入信息展示到对话列表
+        const currentUserMessage = userPromptRef.current?.value || '';
         if (!isRegenerate && !currentUserMessage) {
             toast.warn('Please  Enter your question', { autoClose: 1000 });
             return;
@@ -296,7 +293,7 @@ export default function Home() {
             }
         }
 
-        // 取出最近的5条messages，作为上下文
+        // 当前问答的对话上下文
         const len = newMessageList.length;
         const latestMessageLimit3 = newMessageList.filter(
             (_, idx) => idx >= len - (contextMessageCount + 1)
@@ -318,6 +315,7 @@ export default function Home() {
 
         setMessageList(newMessageList);
         setCurrentUserMessage('');
+        userPromptRef.current!.value = '';
         if (!userPromptRef.current) return;
         userPromptRef.current.style.height = 'auto';
         scrollSmoothThrottle();
@@ -421,7 +419,6 @@ export default function Home() {
             }
             setLoading(false);
             controller.current = null;
-            setCurrentUserMessage('');
             setCurrentAssistantMessage('');
             scrollSmoothThrottle();
         }
@@ -433,7 +430,7 @@ export default function Home() {
     const updateRobotAvatar = (img: string) => {
         setRobotAvatar(img);
         setActiveSystemMenu('');
-        setSystemMenuVisible(false);
+
         window.localStorage.setItem(RobotAvatarLocalKey, img);
     };
 
@@ -442,7 +439,7 @@ export default function Home() {
     const updateUserAvatar = (img: string) => {
         setUserAvatar(img);
         setActiveSystemMenu('');
-        setSystemMenuVisible(false);
+
         window.localStorage.setItem(UserAvatarLocalKey, img);
     };
 
@@ -468,9 +465,11 @@ export default function Home() {
         }
         const light_gpt_api_key =
             window.localStorage.getItem(APIKeyLocalKey) || '';
-        if (light_gpt_api_key !== '') {
+        const decryptedApiKey = decryptApiKey(light_gpt_api_key);
+        if (decryptedApiKey !== '') {
             // 不显示设置过的api_key
-            setApiKey(light_gpt_api_key);
+            setApiKey(decryptedApiKey);
+            setTempApiKeyValue(decryptedApiKey);
         }
     }, []);
 
@@ -558,7 +557,10 @@ export default function Home() {
                     <div
                         className={styles.menu}
                         onClick={() => {
+                            console.log('主题切换---');
                             setTheme(theme === 'light' ? 'dark' : 'light');
+                            const secretKey = process.env.SECRET_KEY;
+                            console.log('secret-key--', secretKey);
                             window.localStorage.setItem(
                                 ThemeLocalKey,
                                 theme === 'light' ? 'dark' : 'light'
@@ -593,7 +595,7 @@ export default function Home() {
                         </div>
                     ))}
                     <div className={styles.menu}>
-                        <span>最近</span>
+                        <span>{t('chatBackgroundContext')}</span>
                         <input
                             value={contextMessageCount}
                             onChange={(e) => {
@@ -605,7 +607,7 @@ export default function Home() {
                             }}
                             type="text"
                         />
-                        <span>条消息作为上下文</span>
+                        
                     </div>
                 </div>
             </aside>
@@ -620,7 +622,6 @@ export default function Home() {
                         apiKey={apiKey}
                         theme={theme}
                         updateTheme={updateTheme}
-                        toggleSystemMenuVisible={toggleSystemMenuVisible}
                     />
                 </div>
                 <div className={styles.main}>
@@ -646,12 +647,21 @@ export default function Home() {
                                         removeMessageById={removeMessageById}
                                     />
                                 ))}
+                            { !loading && currentUserMessage.length > 0 && (
+                                <MessageItem id={tempCurrentUserMessageId.current}
+                                    role={ERole.user}
+                                    avatar={userAvatar}
+                                    message={currentUserMessage}
+                                    isTemp
+                                />
+                            ) }
                             {loading && currentAssistantMessage.length > 0 && (
                                 <MessageItem
-                                    id={uuid()}
+                                    id={tempCurrentAssistantMessageId.current}
                                     role={ERole.assistant}
                                     avatar={robotAvatar}
                                     message={currentAssistantMessage}
+                                    isTemp
                                 />
                             )}
                             <div className={styles.placeholder}>
@@ -717,9 +727,7 @@ export default function Home() {
                             </div>
                             <textarea
                                 className={styles.userPrompt}
-                                onChange={(e) => {
-                                    setCurrentUserMessage(e.target.value);
-                                }}
+                                disabled={loading}
                                 onInput={() => {
                                     if (
                                         userPromptRef.current &&
@@ -730,8 +738,9 @@ export default function Home() {
                                             2 +
                                             'px';
                                     }
+                                    setCurrentUserMessage(userPromptRef.current!.value)
+                                    scrollSmoothThrottle();
                                 }}
-                                value={currentUserMessage}
                                 ref={(e) => {
                                     userPromptRef.current = e;
                                 }}
@@ -742,25 +751,13 @@ export default function Home() {
                                 }
                                 rows={1}
                                 onKeyDown={(event) => {
-                                    // event.key 的值不受操作系统和键盘布局的影响，它始终表示按下的是哪个字符键。
                                     // pc desktop
-
                                     if (!windowState.current.isMobile) {
                                         if (
                                             event.code === 'Enter' &&
                                             !event.shiftKey &&
                                             (event.metaKey || event.ctrlKey)
                                         ) {
-                                            // 按下 "Command/Ctrl" + "Enter"，输入换行符
-                                            const newValue =
-                                                currentUserMessage + '\n';
-                                            setCurrentUserMessage(newValue);
-                                            event.preventDefault();
-                                        } else if (
-                                            event.code === 'Enter' &&
-                                            !event.shiftKey
-                                        ) {
-                                            // 按下 "Enter"，发送请求
                                             if (
                                                 windowState.current
                                                     .isUsingComposition
@@ -770,9 +767,8 @@ export default function Home() {
                                                 false
                                             );
                                             event.preventDefault();
-                                        }
+                                        } 
                                     }
-
                                     // mobile desktop
                                     if (
                                         windowState.current.isMobile &&
@@ -789,11 +785,11 @@ export default function Home() {
                                         chatGPTTurboWithLatestUserPrompt(false);
                                     }
                                 }}
-                                onCompositionStart={(e) => {
+                                onCompositionStart={() => {
                                     windowState.current.isUsingComposition =
                                         true;
                                 }}
-                                onCompositionEnd={(e) => {
+                                onCompositionEnd={() => {
                                     windowState.current.isUsingComposition =
                                         false;
                                 }}
@@ -855,9 +851,9 @@ export default function Home() {
                     }`}
                 >
                     <i className="fas fa-image" onClick={convertToImage}></i>
-                    <i className="fas fa-file-pdf" onClick={convertToPDF}></i>
+                    <i className="fas fa-file-download" onClick={convertToPDF}></i>
                     <i
-                        className="fas fa-trash-alt"
+                        className="fas fa-redo-alt"
                         onClick={() => {
                             if (messageList.length === 0) {
                                 toast.warn(
@@ -932,7 +928,7 @@ export default function Home() {
                                     className={styles.saveButton}
                                     onClick={() => {
                                         setActiveSystemMenu('');
-                                        setSystemMenuVisible(false);
+
                                         setSystemRole({
                                             role: ERole.system,
                                             content: tempSystemRoleValue,
@@ -983,11 +979,13 @@ export default function Home() {
                                     className={styles.saveButton}
                                     onClick={() => {
                                         setActiveSystemMenu('');
-                                        setSystemMenuVisible(false);
                                         setApiKey(tempApiKeyValue);
+
+                                        const encryptedApiKey =
+                                            encryptApiKey(tempApiKeyValue);
                                         window.localStorage.setItem(
                                             APIKeyLocalKey,
-                                            tempApiKeyValue
+                                            encryptedApiKey
                                         );
                                         toast.success('Successful update', {
                                             autoClose: 1000,
